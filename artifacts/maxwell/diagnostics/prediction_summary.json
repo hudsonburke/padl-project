@@ -1,0 +1,23 @@
+{
+  "checkpoint": "artifacts/maxwell/best_model.pt",
+  "dataset": "data/processed/full_sweep_v2/resampled_dataset.parquet",
+  "device": "cpu",
+  "splits": {
+    "val": {
+      "n_sims": 36,
+      "mean_mae": 0.008339299290027056,
+      "median_mae": 0.008749512489885092,
+      "mean_rmse": 0.010507342487524225,
+      "best_sim": "full_v2_007",
+      "worst_sim": "full_v2_161"
+    },
+    "test": {
+      "n_sims": 36,
+      "mean_mae": 0.008307526845278012,
+      "median_mae": 0.008200180251151323,
+      "mean_rmse": 0.010286527654774044,
+      "best_sim": "full_v2_010",
+      "worst_sim": "full_v2_210"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+project:
+  type: manuscript
+
+manuscript:
+  article: report.qmd
+
+format:
+  html:
+    code-fold: true
+  docx: default
+  pdf:
+    fontsize: 10pt
+    geometry:
+      - margin=0.75in
+
+execute:
+  freeze: auto
+  echo: false

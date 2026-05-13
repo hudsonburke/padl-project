@@ -1,0 +1,801 @@
+---
+title: A physics-aware recurrent surrogate for nonlinear viscoelastic tendon force prediction
+author:
+  name: Hudson Burke
+  affiliations:
+  - University of Virginia
+  - Mechanical and Aerospace Engineering
+bibliography: references.bib
+jupyter: python3
+---
+
+```{python}
+#| output: false
+import csv
+import json
+import os
+import shutil
+import sys
+import time
+from collections import defaultdict
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+import numpy as np
+import pyarrow.parquet as pq
+import torch
+
+ROOT = Path('.')
+SRC = ROOT / 'src'
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+FORCE_RETRAIN = os.getenv('PADL_FORCE_RETRAIN', '').strip().lower() in {'1', 'true', 'yes', 'y'}
+
+from tendon_surrogate.config import load_config
+from tendon_surrogate.data import compute_normalization_stats, load_sequence_records, make_dataloader, split_records
+from tendon_surrogate.diagnostics import generate_prediction_diagnostics
+from tendon_surrogate.training import evaluate_checkpoint, run_training
+
+
+def load_json(path):
+    return json.loads(Path(path).read_text())
+
+
+def load_csv_rows(path):
+    with Path(path).open(newline='') as f:
+        return list(csv.DictReader(f))
+
+
+def load_prediction_series(path):
+    rows = load_csv_rows(path)
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[row['sim_id']].append(row)
+    out = {}
+    for sim_id, sim_rows in grouped.items():
+        sim_rows = sorted(sim_rows, key=lambda r: float(r['time']))
+        out[sim_id] = {
+            'split': sim_rows[0]['split'],
+            'time': np.array([float(r['time']) for r in sim_rows]),
+            'force_true': np.array([float(r['force_true']) for r in sim_rows]),
+            'force_pred': np.array([float(r['force_pred']) for r in sim_rows]),
+            'force_abs_err': np.array([float(r['force_abs_err']) for r in sim_rows]),
+        }
+    return out
+
+
+def make_markdown_table(headers, rows):
+    lines = [
+        '| ' + ' | '.join(headers) + ' |',
+        '| ' + ' | '.join(['---'] * len(headers)) + ' |',
+    ]
+    for row in rows:
+        lines.append('| ' + ' | '.join(str(x) for x in row) + ' |')
+    return '\n'.join(lines)
+
+
+def select_best_and_worst(metric_rows, split):
+    subset = sorted([r for r in metric_rows if r['split'] == split], key=lambda r: float(r['mae']))
+    return subset[0], subset[-1]
+
+
+def metric_lookup(metric_rows):
+    return {row['sim_id']: row for row in metric_rows}
+
+
+def physical_summary(metric_rows, series_map, split):
+    metric_subset = [r for r in metric_rows if r['split'] == split]
+    series_subset = [series for series in series_map.values() if series['split'] == split]
+    true_rel = [
+        (float(r['peak_true']) - float(r['final_true'])) / max(float(r['peak_true']), 1e-12)
+        for r in metric_subset
+    ]
+    pred_rel = [
+        (float(r['peak_pred']) - float(r['final_pred'])) / max(float(r['peak_pred']), 1e-12)
+        for r in metric_subset
+    ]
+    relax_err = [abs(a - b) for a, b in zip(true_rel, pred_rel)]
+    t0_pred = [float(series['force_pred'][0]) for series in series_subset]
+    peak_bias = [float(r['peak_pred']) - float(r['peak_true']) for r in metric_subset]
+    final_bias = [float(r['final_pred']) - float(r['final_true']) for r in metric_subset]
+    return {
+        'mean_t0_pred': float(np.mean(t0_pred)),
+        'mean_true_relax': float(np.mean(true_rel)),
+        'mean_pred_relax': float(np.mean(pred_rel)),
+        'mean_abs_relax_err': float(np.mean(relax_err)),
+        'mean_peak_bias': float(np.mean(peak_bias)),
+        'mean_final_bias': float(np.mean(final_bias)),
+    }
+
+
+def plot_model_metric_comparison(baseline_interp, physics_interp, baseline_holdout, physics_holdout):
+    groups = ['Interp val', 'Interp test', 'Holdout val', 'Holdout test']
+    baseline_mae = [
+        baseline_interp['metrics']['val']['mae'],
+        baseline_interp['metrics']['test']['mae'],
+        baseline_holdout['metrics']['val']['mae'],
+        baseline_holdout['metrics']['test']['mae'],
+    ]
+    physics_mae = [
+        physics_interp['metrics']['val']['mae'],
+        physics_interp['metrics']['test']['mae'],
+        physics_holdout['metrics']['val']['mae'],
+        physics_holdout['metrics']['test']['mae'],
+    ]
+    baseline_mse = [
+        baseline_interp['metrics']['val']['mse'],
+        baseline_interp['metrics']['test']['mse'],
+        baseline_holdout['metrics']['val']['mse'],
+        baseline_holdout['metrics']['test']['mse'],
+    ]
+    physics_mse = [
+        physics_interp['metrics']['val']['mse'],
+        physics_interp['metrics']['test']['mse'],
+        physics_holdout['metrics']['val']['mse'],
+        physics_holdout['metrics']['test']['mse'],
+    ]
+
+    x = np.arange(len(groups))
+    width = 0.35
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.3))
+
+    axes[0].bar(x - width / 2, baseline_mae, width, label='GRU baseline')
+    axes[0].bar(x + width / 2, physics_mae, width, label='Explicit Maxwell model')
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(groups, rotation=20)
+    axes[0].set_ylabel('MAE')
+    axes[0].grid(True, axis='y', alpha=0.3)
+    axes[0].legend(loc='upper left')
+
+    axes[1].bar(x - width / 2, baseline_mse, width, label='GRU baseline')
+    axes[1].bar(x + width / 2, physics_mse, width, label='Explicit Maxwell model')
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(groups, rotation=20)
+    axes[1].set_ylabel('MSE')
+    axes[1].set_yscale('log')
+    axes[1].grid(True, axis='y', alpha=0.3)
+
+    fig.tight_layout()
+
+
+def plot_diagnostic_pair(metric_rows, series_map, split, title_prefix, model_label):
+    best_row, worst_row = select_best_and_worst(metric_rows, split)
+    cases = [('Best', best_row), ('Worst', worst_row)]
+
+    fig, axes = plt.subplots(2, 2, figsize=(9, 5.6), sharex='col', height_ratios=[3, 1.4])
+
+    for col, (label, row) in enumerate(cases):
+        sim_id = row['sim_id']
+        series = series_map[sim_id]
+
+        axes[0, col].plot(series['time'], series['force_true'], linewidth=2, label='true force')
+        axes[0, col].plot(series['time'], series['force_pred'], linewidth=2, linestyle='--', label=model_label)
+        axes[0, col].set_title(
+            f"{label}: {sim_id}\nMAE={float(row['mae']):.4f}, RMSE={float(row['rmse']):.4f}"
+        )
+        axes[0, col].set_ylabel('Force')
+        axes[0, col].grid(True, alpha=0.3)
+
+        axes[1, col].plot(series['time'], series['force_abs_err'], color='tab:red', linewidth=1.8)
+        axes[1, col].set_xlabel('Time')
+        axes[1, col].set_ylabel('|error|')
+        axes[1, col].grid(True, alpha=0.3)
+        axes[1, col].text(
+            0.01,
+            0.95,
+            (
+                f"tendon_l1={float(row['tendon_l1']):g}, visco_g1={float(row['visco_g1']):.2g}, "
+                f"visco_t1={float(row['visco_t1']):.2g}, ramp_time={float(row['ramp_time']):.2g}"
+            ),
+            transform=axes[1, col].transAxes,
+            va='top',
+            ha='left',
+            fontsize=9,
+        )
+
+    axes[0, 0].legend(loc='upper right')
+    fig.suptitle(title_prefix)
+    fig.tight_layout()
+
+
+def plot_case_comparison(sim_ids, baseline_series, physics_series, baseline_lookup, physics_lookup, title_prefix):
+    fig, axes = plt.subplots(2, len(sim_ids), figsize=(9.5, 5.8), sharex='col', height_ratios=[3, 1.4])
+    if len(sim_ids) == 1:
+        axes = np.array([[axes[0]], [axes[1]]])
+
+    for col, sim_id in enumerate(sim_ids):
+        true_series = physics_series[sim_id]
+        baseline_pred = baseline_series[sim_id]
+        physics_pred = physics_series[sim_id]
+        baseline_row = baseline_lookup[sim_id]
+        physics_row = physics_lookup[sim_id]
+
+        axes[0, col].plot(true_series['time'], true_series['force_true'], linewidth=2, label='true force')
+        axes[0, col].plot(true_series['time'], baseline_pred['force_pred'], linewidth=2, linestyle='--', label='GRU baseline')
+        axes[0, col].plot(true_series['time'], physics_pred['force_pred'], linewidth=2, linestyle='-.', label='Explicit Maxwell')
+        axes[0, col].set_title(
+            f"{sim_id}\nGRU MAE={float(baseline_row['mae']):.4f}, Explicit Maxwell MAE={float(physics_row['mae']):.4f}"
+        )
+        axes[0, col].set_ylabel('Force')
+        axes[0, col].grid(True, alpha=0.3)
+
+        axes[1, col].plot(true_series['time'], baseline_pred['force_abs_err'], linewidth=1.8, label='GRU |error|')
+        axes[1, col].plot(true_series['time'], physics_pred['force_abs_err'], linewidth=1.8, label='Explicit Maxwell |error|')
+        axes[1, col].set_xlabel('Time')
+        axes[1, col].set_ylabel('|error|')
+        axes[1, col].grid(True, alpha=0.3)
+        axes[1, col].text(
+            0.01,
+            0.95,
+            (
+                f"tendon_l1={float(physics_row['tendon_l1']):g}, visco_g1={float(physics_row['visco_g1']):.2g}, "
+                f"visco_t1={float(physics_row['visco_t1']):.2g}, ramp_time={float(physics_row['ramp_time']):.2g}"
+            ),
+            transform=axes[1, col].transAxes,
+            va='top',
+            ha='left',
+            fontsize=9,
+        )
+
+    axes[0, 0].legend(loc='upper right')
+    axes[1, 0].legend(loc='upper right')
+    fig.suptitle(title_prefix)
+    fig.tight_layout()
+
+
+def plot_dataset_trajectories(dataset_path):
+    table = pq.read_table(dataset_path)
+    rows = table.to_pylist()
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[str(row['sim_id'])].append(row)
+
+    by_stiffness = defaultdict(list)
+    for sim_id, sim_rows in grouped.items():
+        sim_rows = sorted(sim_rows, key=lambda r: float(r['time']))
+        stiffness = float(sim_rows[0]['tendon_l1'])
+        t = np.array([float(r['time']) for r in sim_rows])
+        f = np.array([float(r['force']) for r in sim_rows])
+        by_stiffness[stiffness].append((t, f))
+
+    stiffness_levels = sorted(by_stiffness)
+    fig, axes = plt.subplots(1, 4, figsize=(10.2, 2.6), sharex=True, sharey=True)
+
+    for ax, stiffness in zip(axes, stiffness_levels, strict=False):
+        curves = by_stiffness[stiffness]
+        for t, f in curves:
+            ax.plot(t, f, color='tab:blue', alpha=0.16, linewidth=0.9)
+        ax.set_title(f'l1 = {stiffness:g}\n(n={len(curves)})', fontsize=9)
+        ax.grid(True, alpha=0.25)
+        ax.tick_params(labelsize=8)
+
+    axes[0].set_ylabel('Force', fontsize=9)
+    for ax in axes:
+        ax.set_xlabel('Time', fontsize=9)
+    fig.tight_layout()
+    return fig
+
+
+def benchmark_model(checkpoint_path, config_path, split='test', batch_size=16, n_warmup=3, n_runs=20):
+    cfg = load_config(ROOT / config_path)
+    records = load_sequence_records(
+        ROOT / cfg.data.dataset_path,
+        sim_id_col=cfg.data.sim_id_col,
+        split_col=cfg.data.split_col,
+        time_col=cfg.data.time_col,
+        dynamic_features=cfg.data.dynamic_features,
+        static_features=cfg.data.static_features,
+        target_col=cfg.data.target,
+    )
+    split_map = split_records(records)
+    stats = compute_normalization_stats(
+        split_map['train'],
+        dynamic_features=cfg.data.dynamic_features,
+        static_features=cfg.data.static_features,
+        target_col=cfg.data.target,
+    )
+    loader = make_dataloader(
+        split_map[split],
+        stats,
+        batch_size=min(batch_size, len(split_map[split])),
+        shuffle=False,
+        num_workers=0,
+    )
+    batch = next(iter(loader))
+    batch = {k: (v.to('cpu') if torch.is_tensor(v) else v) for k, v in batch.items()}
+
+    model = cfg.model.build(cfg.data).to('cpu')
+    checkpoint = torch.load(ROOT / checkpoint_path, map_location='cpu', weights_only=False)
+    model.load_state_dict(checkpoint['model_state'])
+    model.eval()
+
+    n_params = sum(p.numel() for p in model.parameters())
+    with torch.no_grad():
+        for _ in range(n_warmup):
+            model(batch['dynamic'], batch['static'], batch['dynamic_raw'], batch.get('static_raw'))
+        start = time.perf_counter()
+        for _ in range(n_runs):
+            model(batch['dynamic'], batch['static'], batch['dynamic_raw'], batch.get('static_raw'))
+        elapsed = time.perf_counter() - start
+
+    batch_n = int(batch['dynamic'].shape[0])
+    return {
+        'n_params': int(n_params),
+        'ms_per_batch': 1000.0 * elapsed / n_runs,
+        'ms_per_sim': 1000.0 * elapsed / n_runs / batch_n,
+        'batch_size': batch_n,
+    }
+
+
+def plot_final_model_architecture():
+    fig, axes = plt.subplots(1, 2, figsize=(11.6, 5.2), gridspec_kw={'width_ratios': [1.08, 1.0]})
+    ax1, ax2 = axes
+
+    for ax in axes:
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+
+    def box(ax, x, y, w, h, text, fc='#f5f7fb', ec='#2f4b7c', fontsize=10, weight='normal'):
+        patch = FancyBboxPatch(
+            (x, y), w, h,
+            boxstyle='round,pad=0.015,rounding_size=0.02',
+            linewidth=1.5,
+            edgecolor=ec,
+            facecolor=fc,
+        )
+        ax.add_patch(patch)
+        ax.text(
+            x + w / 2,
+            y + h / 2,
+            text,
+            ha='center',
+            va='center',
+            fontsize=fontsize,
+            weight=weight,
+            wrap=True,
+        )
+        return (x, y, w, h)
+
+    def anchor(rect, side='right', frac=0.5):
+        x, y, w, h = rect
+        if side == 'right':
+            return (x + w, y + frac * h)
+        if side == 'left':
+            return (x, y + frac * h)
+        if side == 'top':
+            return (x + frac * w, y + h)
+        if side == 'bottom':
+            return (x + frac * w, y)
+        raise ValueError(f'Unknown side: {side}')
+
+    def arrow(ax, a, b, start='right', end='left', start_frac=0.5, end_frac=0.5, rad=0.0):
+        p1 = anchor(a, start, start_frac)
+        p2 = anchor(b, end, end_frac)
+        arr = FancyArrowPatch(
+            p1,
+            p2,
+            arrowstyle='->',
+            mutation_scale=12,
+            linewidth=1.4,
+            color='#333333',
+            connectionstyle=f'arc3,rad={rad}',
+        )
+        ax.add_patch(arr)
+
+    fig.suptitle(
+        'Final physics-aware model: coupled Maxwell surrogate with explicit tendon scaling',
+        fontsize=9,
+        weight='bold',
+        y=0.98,
+    )
+    fig.text(
+        0.5,
+        0.93,
+        'Stage 1 encodes strain history and separates static parameters; Stage 2 assembles the equilibrium and Maxwell contributions.',
+        ha='center',
+        va='top',
+        fontsize=10,
+    )
+
+    ax1.text(0.02, 0.90, 'Stage 1: input grouping and encoding', fontsize=11, weight='bold')
+    dyn = box(ax1, 0.03, 0.63, 0.28, 0.16, 'Dynamic raw inputs\nstrain, strain_rate, phase', fc='#e8f1fb', weight='bold')
+    static = box(ax1, 0.03, 0.34, 0.28, 0.18, 'Static inputs\ntendon_l1, visco_g1,\nvisco_t1, ramp_time', fc='#e8f1fb', weight='bold')
+    tendon_raw = box(ax1, 0.03, 0.10, 0.28, 0.12, 'Raw tendon_l1', fc='#fff2cc', weight='bold')
+
+    split = box(ax1, 0.42, 0.34, 0.28, 0.18, 'Split static inputs into\nelastic / viscous /\nprotocol groups', fc='#f4ecff', weight='bold')
+    elastic_enc = box(ax1, 0.79, 0.63, 0.18, 0.13, 'Elastic\nencoder', fc='#f4ecff')
+    viscous_enc = box(ax1, 0.79, 0.44, 0.18, 0.13, 'Viscous\nencoder', fc='#f4ecff')
+    protocol_enc = box(ax1, 0.79, 0.25, 0.18, 0.13, 'Protocol\nencoder', fc='#f4ecff')
+
+    arrow(ax1, static, split)
+    arrow(ax1, split, elastic_enc, end_frac=0.50)
+    arrow(ax1, split, viscous_enc, end_frac=0.50)
+    arrow(ax1, split, protocol_enc, end_frac=0.50)
+    ax1.annotate('', xy=anchor(elastic_enc, 'left', 0.50), xytext=anchor(dyn, 'right', 0.50), arrowprops=dict(arrowstyle='->', lw=1.4, color='#333333'))
+    ax1.text(0.53, 0.72, 'raw strain sequence', ha='center', va='bottom', fontsize=9)
+    ax1.annotate('', xy=(0.78, 0.16), xytext=anchor(tendon_raw, 'right', 0.50), arrowprops=dict(arrowstyle='->', lw=1.4, color='#333333'))
+    ax1.text(0.56, 0.16, 'raw stiffness kept for explicit scaling', ha='center', va='bottom', fontsize=9)
+
+    ax2.text(0.02, 0.90, 'Stage 2: constitutive assembly and time update', fontsize=11, weight='bold')
+    elastic_head = box(ax2, 0.03, 0.61, 0.40, 0.16, 'Elastic force head\nF_full(t) = ε ×\nsoftplus(MLP)', fc='#d9ead3', fontsize=8.2, weight='bold')
+    maxwell_params = box(ax2, 0.03, 0.40, 0.40, 0.16, 'Partition + τ heads\n[g_eq, g_i], τ_i', fc='#d9ead3', fontsize=8.2, weight='bold')
+    scale_law = box(ax2, 0.03, 0.16, 0.40, 0.16, 'Explicit tendon scaling\ns(l1) = s0 ×\n(l1 / l_ref)^α', fc='#fff2cc', fontsize=8.2, weight='bold')
+    update = box(ax2, 0.54, 0.16, 0.40, 0.16, 'Exact Maxwell update\nq_i ← branch memory', fc='#fce5cd', fontsize=8.2, weight='bold')
+    output = box(ax2, 0.54, 0.61, 0.40, 0.16, 'Final force\nF = s × [g_eq F_full\n+ Σ q_i]', fc='#cfe2f3', fontsize=8.2, weight='bold')
+
+    arrow(ax2, elastic_head, output)
+    arrow(ax2, maxwell_params, update)
+    arrow(ax2, elastic_head, update, start='bottom', end='top', start_frac=0.70, end_frac=0.28)
+    arrow(ax2, scale_law, output, start='top', end='bottom', start_frac=0.50, end_frac=0.48)
+    arrow(ax2, update, output, start='top', end='bottom', start_frac=0.50, end_frac=0.78)
+
+    ax2.text(0.48, 0.81, 'equilibrium term', fontsize=8.5, ha='center')
+    ax2.text(0.48, 0.35, 'branch weights + time constants', fontsize=8.5, ha='center')
+    ax2.text(0.74, 0.52, 'Maxwell overstress states', fontsize=8.5, ha='center')
+    ax2.text(0.48, 0.12, 'monotone stiffness scaling', fontsize=8.5, ha='center')
+
+    ax2.text(
+        0.50,
+        0.05,
+        'Elastic branch gives the long-time force; Maxwell branches store transient overstress that builds during the ramp and decays during hold.',
+        ha='center',
+        va='bottom',
+        fontsize=9,
+        wrap=True,
+    )
+
+    fig.tight_layout(rect=(0, 0, 1, 0.9), w_pad=1.5)
+    return fig
+
+
+def experiment_outputs_ready(out_dir: Path) -> bool:
+    required = [
+        out_dir / 'best_model.pt',
+        out_dir / 'metrics_summary.json',
+        out_dir / 'eval_metrics.json',
+        out_dir / 'diagnostics' / 'per_sim_metrics.csv',
+        out_dir / 'diagnostics' / 'predictions.csv',
+        out_dir / 'diagnostics' / 'prediction_summary.json',
+    ]
+    return all(path.exists() for path in required)
+
+
+def run_experiment_pipeline(config_path: str) -> None:
+    cfg = load_config(ROOT / config_path)
+    out_dir = ROOT / cfg.training.out_dir
+    if experiment_outputs_ready(out_dir) and not FORCE_RETRAIN:
+        print(f"Reusing existing artifacts for {config_path}")
+        return
+
+    print(f"Rebuilding artifacts for {config_path}")
+    run_training(cfg)
+    evaluate_checkpoint(
+        out_dir / 'best_model.pt',
+        out_path=out_dir / 'eval_metrics.json',
+    )
+    shutil.rmtree(out_dir / 'diagnostics', ignore_errors=True)
+    generate_prediction_diagnostics(
+        out_dir / 'best_model.pt',
+        out_dir=out_dir / 'diagnostics',
+    )
+
+
+for config_path in [
+    'configs/train_baseline.yaml',
+    'configs/train_baseline_stiffness_holdout.yaml',
+    'configs/train_maxwell.yaml',
+    'configs/train_maxwell_stiffness_holdout.yaml',
+]:
+    run_experiment_pipeline(config_path)
+
+
+baseline_interp_metrics = load_json(ROOT / 'artifacts' / 'baseline' / 'metrics_summary.json')
+baseline_holdout_metrics = load_json(ROOT / 'artifacts' / 'baseline_stiffness_holdout' / 'metrics_summary.json')
+physics_interp_metrics = load_json(ROOT / 'artifacts' / 'maxwell' / 'metrics_summary.json')
+physics_holdout_metrics = load_json(ROOT / 'artifacts' / 'maxwell_stiffness_holdout' / 'metrics_summary.json')
+
+baseline_interp_metric_rows = load_csv_rows(ROOT / 'artifacts' / 'baseline' / 'diagnostics' / 'per_sim_metrics.csv')
+baseline_holdout_metric_rows = load_csv_rows(ROOT / 'artifacts' / 'baseline_stiffness_holdout' / 'diagnostics' / 'per_sim_metrics.csv')
+physics_interp_metric_rows = load_csv_rows(ROOT / 'artifacts' / 'maxwell' / 'diagnostics' / 'per_sim_metrics.csv')
+physics_holdout_metric_rows = load_csv_rows(ROOT / 'artifacts' / 'maxwell_stiffness_holdout' / 'diagnostics' / 'per_sim_metrics.csv')
+
+baseline_interp_series = load_prediction_series(ROOT / 'artifacts' / 'baseline' / 'diagnostics' / 'predictions.csv')
+baseline_holdout_series = load_prediction_series(ROOT / 'artifacts' / 'baseline_stiffness_holdout' / 'diagnostics' / 'predictions.csv')
+physics_interp_series = load_prediction_series(ROOT / 'artifacts' / 'maxwell' / 'diagnostics' / 'predictions.csv')
+physics_holdout_series = load_prediction_series(ROOT / 'artifacts' / 'maxwell_stiffness_holdout' / 'diagnostics' / 'predictions.csv')
+
+baseline_holdout_physics_val = physical_summary(baseline_holdout_metric_rows, baseline_holdout_series, 'val')
+baseline_holdout_physics_test = physical_summary(baseline_holdout_metric_rows, baseline_holdout_series, 'test')
+physics_holdout_physics_val = physical_summary(physics_holdout_metric_rows, physics_holdout_series, 'val')
+physics_holdout_physics_test = physical_summary(physics_holdout_metric_rows, physics_holdout_series, 'test')
+
+baseline_benchmark = benchmark_model(
+    'artifacts/baseline/best_model.pt',
+    'configs/train_baseline.yaml',
+)
+physics_benchmark = benchmark_model(
+    'artifacts/maxwell/best_model.pt',
+    'configs/train_maxwell.yaml',
+)
+
+physics_holdout_best, physics_holdout_worst = select_best_and_worst(physics_holdout_metric_rows, 'test')
+comparison_sim_ids = [physics_holdout_best['sim_id'], physics_holdout_worst['sim_id']]
+baseline_holdout_lookup = metric_lookup(baseline_holdout_metric_rows)
+physics_holdout_lookup = metric_lookup(physics_holdout_metric_rows)
+```
+
+## Problem Definition
+
+This project studies force prediction for a tendon-like strip undergoing ramp-hold uniaxial extension. The underlying FEBio model uses a tendon elastic response wrapped by an uncoupled viscoelastic material, so the effective constitutive behavior is nonlinear and time dependent [@febioTheory411]. Rather than predicting full finite-element fields, the surrogate targets the global reaction force history $F(t)$, which is the quantity needed for reduced musculoskeletal simulation.
+
+Following the FEBio Theory Manual [@febioTheory411], the generator is motivated by transient solid mechanics with additive elastic and viscous stress contributions,
+
+$$
+\rho \ddot{\mathbf{u}} = \nabla \cdot \boldsymbol{\sigma} + \rho \mathbf{b},
+\qquad
+\boldsymbol{\sigma} = \boldsymbol{\sigma}_e + \boldsymbol{\sigma}_v,
+$$
+
+but the learned surrogate ultimately approximates only the reduced global force response rather than the full displacement or stress field.
+
+The final data-generation setup was a fixed-geometry tensile test:
+
+- rectangular strip: 10 mm × 2 mm × 1 mm,
+- loading axis: x,
+- target displacement: 0.5 mm,
+- target strain: 0.05,
+- total time: 1.0 s,
+- fixed output grid: 201 time points.
+
+## Data
+
+Synthetic trajectories were generated in FEBio [@febioTheory411] by varying the four parameters most closely tied to the proposal goals:
+
+- fiber stiffness: `tendon_l1 ∈ {3.0, 4.0, 5.0, 6.0}`
+- viscoelastic amplitude: `visco_g1 ∈ {0.30, 0.45, 0.60, 0.75}`
+- relaxation time: `visco_t1 ∈ {0.10, 0.20, 0.30, 0.40}`
+- loading rate: `ramp_time ∈ {0.10, 0.20, 0.30, 0.40}`
+
+A 4 × 4 × 4 × 4 design produced 256 planned simulations. Of these, 240 validated successfully after processing and QC. The 16 failures were localized to the numerically difficult corner with highest stiffness and fastest loading (`tendon_l1 = 6.0`, `ramp_time = 0.1`). All validated runs were resampled onto the same 201-point time grid to produce a model-ready dataset.
+
+```{python}
+#| fig-cap: Validated force-time trajectories grouped by stiffness level. The systematic increase in peak and hold force with increasing tendon_l1 makes the stiffness-holdout split a meaningful extrapolation test.
+#| fig-align: center
+#| out-width: 98%
+plot_dataset_trajectories(ROOT / 'data' / 'processed' / 'full_sweep_v2' / 'resampled_dataset_stiffness_holdout.parquet')
+```
+
+## Method
+
+The learning problem is a sequence-to-sequence surrogate rather than a full field predictor. Each trajectory is represented by:
+
+- dynamic inputs: `strain`, `strain_rate`, `phase`
+- static inputs: `tendon_l1`, `visco_g1`, `visco_t1`, `ramp_time`
+- target output: `force`
+
+Two recurrent surrogate models were evaluated.
+
+### GRU baseline
+
+The baseline uses a gated recurrent unit (GRU) sequence model [@cho2014gru] with:
+
+- an MLP encoder for the static parameters,
+- a GRU sequence model for the dynamic trajectory,
+- a readout MLP that maps recurrent hidden states to force.
+
+This model is flexible and accurate, but it does not explicitly enforce constitutive structure beyond recurrence.
+
+### Physics-aware coupled Maxwell model with explicit tendon scaling
+
+The final physics-aware model is not a literal PARCv2 implementation. Instead, it is a PARC-inspired constitutive recurrent surrogate that borrows the idea of structured state evolution from PARCv2 [@nguyen2024parcv2] while using the classical generalized Maxwell picture as its viscoelastic inductive bias [@christensen1982viscoelasticity]. In a generalized Maxwell model, an equilibrium branch carries the long-time elastic response, while several parallel Maxwell branches contribute transient overstress terms that decay with their own characteristic relaxation times during a strain hold [@christensen1982viscoelasticity]. The model therefore structures the dynamics as a generalized Maxwell-style tendon surrogate:
+
+- a learned elastic force scale driven by strain history,
+- transient Maxwell overstress branches that build during the ramp and decay during hold,
+- exact enforcement of $F(0) = 0$,
+- an explicit monotone tendon stiffness scaling law applied using the raw stiffness parameter,
+
+  $$
+  s(\mathrm{tendon\_l1}) = s_0 \left(\frac{\mathrm{tendon\_l1}}{l_{\mathrm{ref}}}\right)^{\alpha},
+  \qquad s_0 > 0, \; \alpha > 0.
+  $$
+
+This explicit scaling was introduced after simpler learned calibrators still underpredicted the force level on unseen stiffness values. It gives the model a direct, physically meaningful mechanism for increasing force with tendon stiffness. In reduced constitutive form, the final surrogate assumes
+
+$$
+F(t) = s(\mathrm{tendon\_l1})\left[g_{\mathrm{eq}} F_{\mathrm{full}}\!\left(\varepsilon(t); \theta_e\right) + \sum_i q_i(t)\right],
+$$
+
+$$
+\frac{dq_i}{dt} = g_i d(t) - \frac{q_i}{\tau_i},
+\qquad
+ d(t) = \max\!\left(\frac{dF_{\mathrm{full}}}{dt}, 0\right),
+$$
+
+where $F_{\mathrm{full}}$ is the learned elastic force scale, $q_i$ are transient Maxwell overstress states, and $\tau_i$ are learned relaxation times. In other words, the model approximates tendon force as an equilibrium elastic contribution plus a sum of decaying nonequilibrium branches, which is the qualitative behavior expected from a generalized Maxwell material [@christensen1982viscoelasticity]. This structure makes stress relaxation during a strain hold explicit rather than leaving it entirely to a generic recurrent hidden state.
+
+```{python}
+#| fig-cap: Architecture of the final physics-aware model. Small neural subnetworks encode static parameter groups and estimate elastic/viscous quantities, while explicit Maxwell branch states carry the viscoelastic memory over time.
+#| fig-align: center
+#| out-width: 98%
+plot_final_model_architecture()
+```
+
+Both models were trained with mean-squared error loss. Two evaluation protocols were used:
+
+1. **Interpolation split**: mixed train/val/test assignment across the parameter grid (168 / 36 / 36 simulations).
+2. **Stiffness holdout split**: whole stiffness levels held out,
+   - train: `tendon_l1 ∈ {3.0, 4.0}`
+   - val: `tendon_l1 = 5.0`
+   - test: `tendon_l1 = 6.0`
+
+The second split is intentionally harder and probes extrapolation to unseen stiffness levels.
+
+## Results
+
+### Quantitative summary
+
+```{python}
+#| output: asis
+summary_table = make_markdown_table(
+    ['Model', 'Evaluation setting', 'Train MAE', 'Val MAE', 'Test MAE', 'Val MSE', 'Test MSE'],
+    [
+        [
+            'GRU baseline',
+            'Interpolation split',
+            f"{baseline_interp_metrics['metrics']['train']['mae']:.5f}",
+            f"{baseline_interp_metrics['metrics']['val']['mae']:.5f}",
+            f"{baseline_interp_metrics['metrics']['test']['mae']:.5f}",
+            f"{baseline_interp_metrics['metrics']['val']['mse']:.2e}",
+            f"{baseline_interp_metrics['metrics']['test']['mse']:.2e}",
+        ],
+        [
+            'Explicit Maxwell model',
+            'Interpolation split',
+            f"{physics_interp_metrics['metrics']['train']['mae']:.5f}",
+            f"{physics_interp_metrics['metrics']['val']['mae']:.5f}",
+            f"{physics_interp_metrics['metrics']['test']['mae']:.5f}",
+            f"{physics_interp_metrics['metrics']['val']['mse']:.2e}",
+            f"{physics_interp_metrics['metrics']['test']['mse']:.2e}",
+        ],
+        [
+            'GRU baseline',
+            'Stiffness holdout',
+            f"{baseline_holdout_metrics['metrics']['train']['mae']:.5f}",
+            f"{baseline_holdout_metrics['metrics']['val']['mae']:.5f}",
+            f"{baseline_holdout_metrics['metrics']['test']['mae']:.5f}",
+            f"{baseline_holdout_metrics['metrics']['val']['mse']:.2e}",
+            f"{baseline_holdout_metrics['metrics']['test']['mse']:.2e}",
+        ],
+        [
+            'Explicit Maxwell model',
+            'Stiffness holdout',
+            f"{physics_holdout_metrics['metrics']['train']['mae']:.5f}",
+            f"{physics_holdout_metrics['metrics']['val']['mae']:.5f}",
+            f"{physics_holdout_metrics['metrics']['test']['mae']:.5f}",
+            f"{physics_holdout_metrics['metrics']['val']['mse']:.2e}",
+            f"{physics_holdout_metrics['metrics']['test']['mse']:.2e}",
+        ],
+    ],
+)
+print(summary_table)
+```
+
+The GRU baseline remains an excellent interpolation model, but the new explicit-tendon-scaling Maxwell surrogate is now nearly tied with it on the interpolation test set (`{python} f"{physics_interp_metrics['metrics']['test']['mae']:.5f}"` vs. `{python} f"{baseline_interp_metrics['metrics']['test']['mae']:.5f}"` test MAE). The much more important result is on the stiffness-holdout benchmark: the explicit Maxwell model reduces holdout MAE from `{python} f"{baseline_holdout_metrics['metrics']['val']['mae']:.4f}"` to `{python} f"{physics_holdout_metrics['metrics']['val']['mae']:.4f}"` on validation and from `{python} f"{baseline_holdout_metrics['metrics']['test']['mae']:.4f}"` to `{python} f"{physics_holdout_metrics['metrics']['test']['mae']:.4f}"` on test. This is about a `{python} f"{100.0 * (baseline_holdout_metrics['metrics']['test']['mae'] - physics_holdout_metrics['metrics']['test']['mae']) / baseline_holdout_metrics['metrics']['test']['mae']:.0f}"`% reduction in test MAE while simultaneously improving physical plausibility.
+
+### Computational cost
+
+```{python}
+#| output: asis
+speed_table = make_markdown_table(
+    ['Model', 'Parameter count', 'CPU ms / batch', 'CPU ms / simulation'],
+    [
+        ['GRU baseline', f"{baseline_benchmark['n_params']:,}", f"{baseline_benchmark['ms_per_batch']:.2f}", f"{baseline_benchmark['ms_per_sim']:.3f}"],
+        ['Explicit Maxwell model', f"{physics_benchmark['n_params']:,}", f"{physics_benchmark['ms_per_batch']:.2f}", f"{physics_benchmark['ms_per_sim']:.3f}"],
+    ],
+)
+print(speed_table)
+```
+
+Both surrogate models are lightweight compared with the FEBio generator. The GRU baseline has more trainable parameters because it carries a 2-layer recurrent hidden state, while the explicit Maxwell model replaces that generic recurrence with four explicit viscoelastic modes and a few small MLP heads. The timing numbers above were measured on CPU in the report execution environment and are intended as relative complexity indicators rather than a hardware-optimized benchmark.
+
+```{python}
+#| fig-cap: Comparison of the GRU baseline and the explicit-tendon-scaling Maxwell model across both evaluation protocols. The GRU is slightly better on interpolation validation, but the explicit Maxwell model dominates the stiffness-holdout benchmark.
+#| fig-align: center
+#| out-width: 94%
+plot_model_metric_comparison(
+    baseline_interp_metrics,
+    physics_interp_metrics,
+    baseline_holdout_metrics,
+    physics_holdout_metrics,
+)
+```
+
+### Interpolation split diagnostics
+
+On the interpolation split, the explicit Maxwell model still captures the full ramp-hold behavior well, so the stronger holdout performance is not a tradeoff against in-range accuracy. The model remains physically plausible on nearby parameter combinations, including near-zero force at the start of loading, while matching the baseline test error closely.
+
+### Stiffness-holdout diagnostics
+
+The stiffness-holdout benchmark is the clearest discriminator between the two models. The GRU baseline develops a nonphysical force offset at `t = 0` and substantially underpredicts the force level on unseen `tendon_l1 = 6.0` trajectories. In contrast, the explicit Maxwell model preserves realistic relaxation during hold, maintains exact `F(0) = 0`, and substantially reduces the force-scale bias.
+
+```{python}
+#| output: asis
+holdout_physics_table = make_markdown_table(
+    ['Model', 'Split', 'Mean predicted F(0)', 'Mean predicted relaxation', 'Mean true relaxation', 'Mean abs. relaxation error'],
+    [
+        [
+            'GRU baseline',
+            'Validation',
+            f"{baseline_holdout_physics_val['mean_t0_pred']:.4f}",
+            f"{baseline_holdout_physics_val['mean_pred_relax']:.4f}",
+            f"{baseline_holdout_physics_val['mean_true_relax']:.4f}",
+            f"{baseline_holdout_physics_val['mean_abs_relax_err']:.4f}",
+        ],
+        [
+            'Explicit Maxwell model',
+            'Validation',
+            f"{physics_holdout_physics_val['mean_t0_pred']:.4f}",
+            f"{physics_holdout_physics_val['mean_pred_relax']:.4f}",
+            f"{physics_holdout_physics_val['mean_true_relax']:.4f}",
+            f"{physics_holdout_physics_val['mean_abs_relax_err']:.4f}",
+        ],
+        [
+            'GRU baseline',
+            'Test',
+            f"{baseline_holdout_physics_test['mean_t0_pred']:.4f}",
+            f"{baseline_holdout_physics_test['mean_pred_relax']:.4f}",
+            f"{baseline_holdout_physics_test['mean_true_relax']:.4f}",
+            f"{baseline_holdout_physics_test['mean_abs_relax_err']:.4f}",
+        ],
+        [
+            'Explicit Maxwell model',
+            'Test',
+            f"{physics_holdout_physics_test['mean_t0_pred']:.4f}",
+            f"{physics_holdout_physics_test['mean_pred_relax']:.4f}",
+            f"{physics_holdout_physics_test['mean_true_relax']:.4f}",
+            f"{physics_holdout_physics_test['mean_abs_relax_err']:.4f}",
+        ],
+    ],
+)
+print(holdout_physics_table)
+```
+
+The table above highlights the main physical improvement. On the holdout test set, the GRU predicts a mean initial force of `{python} f"{baseline_holdout_physics_test['mean_t0_pred']:.4f}"`, while the explicit Maxwell model predicts exactly `{python} f"{physics_holdout_physics_test['mean_t0_pred']:.1f}"`. The explicit Maxwell model also matches the mean relaxation ratio much more closely (`{python} f"{physics_holdout_physics_test['mean_pred_relax']:.4f}"` predicted vs. `{python} f"{physics_holdout_physics_test['mean_true_relax']:.4f}"` true) than the GRU (`{python} f"{baseline_holdout_physics_test['mean_pred_relax']:.4f}"` predicted).
+
+```{python}
+#| fig-cap: Direct comparison on the best and worst stiffness-holdout test cases selected from the explicit Maxwell model. Relative to the GRU baseline, the explicit Maxwell model removes the nonphysical start-force offset, tracks the ramp scale more closely, and preserves the hold-phase relaxation curve.
+#| fig-align: center
+#| out-width: 96%
+plot_case_comparison(
+    comparison_sim_ids,
+    baseline_holdout_series,
+    physics_holdout_series,
+    baseline_holdout_lookup,
+    physics_holdout_lookup,
+    'Stiffness-holdout trajectory comparison',
+)
+```
+
+Even on the hardest holdout case (`{python} physics_holdout_worst['sim_id']`), the explicit Maxwell model lowers the error dramatically and maintains the correct qualitative shape. The remaining discrepancy is mostly a modest residual underprediction of the force level, not a breakdown of the constitutive behavior itself.
+
+## Conclusion
+
+The FEBio pipeline successfully produced a high-quality dataset of validated tendon force trajectories, and the modeling study now gives a clear comparison between a strong generic recurrent baseline and a more physically structured constitutive surrogate.
+
+The main findings are:
+
+- The GRU baseline is an excellent interpolation model on this smooth, fixed-protocol sequence dataset.
+- A generalized Maxwell-style recurrent model with explicit tendon stiffness scaling can nearly match the GRU on interpolation.
+- On the harder stiffness-holdout benchmark, the explicit Maxwell model is substantially better than the GRU baseline.
+- The explicit Maxwell model enforces `F(0) = 0` exactly and reproduces hold-phase relaxation much more faithfully under extrapolation.
+- The remaining holdout error is mainly a reduced force-level bias, not a failure to capture the viscoelastic relaxation mechanism.
+
+Overall, the final project supports the central hypothesis that adding constitutive structure and physically meaningful parameter scaling can materially improve out-of-distribution generalization, even when a less structured recurrent model is already strong on interpolation.
+
+Future work should focus on three directions. First, the present explicit-Maxwell surrogate could be extended toward a more faithful differentiator–integrator PARCv2-style training procedure, separating learned rate-law estimation from correction/integration. Second, the data space could be broadened by adding more stiffness levels, additional loading protocols, and possibly simple geometric variations to probe generalization beyond the current ramp-hold strip test. Third, a more explicit timing comparison against FEBio would strengthen the case for surrogate deployment in larger multiscale or musculoskeletal simulations.
+
+
+## References

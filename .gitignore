@@ -1,0 +1,9 @@
+.venv/
+.pytest_cache/
+__pycache__/
+.jupyter_cache/
+report.html
+report_files/
+
+/.quarto/
+**/*.quarto_ipynb

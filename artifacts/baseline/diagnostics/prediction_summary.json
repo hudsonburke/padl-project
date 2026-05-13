@@ -1,0 +1,23 @@
+{
+  "checkpoint": "artifacts/baseline/best_model.pt",
+  "dataset": "data/processed/full_sweep_v2/resampled_dataset.parquet",
+  "device": "cpu",
+  "splits": {
+    "val": {
+      "n_sims": 36,
+      "mean_mae": 0.0061501493166563,
+      "median_mae": 0.005827361484989524,
+      "mean_rmse": 0.007471128341635047,
+      "best_sim": "full_v2_093",
+      "worst_sim": "full_v2_150"
+    },
+    "test": {
+      "n_sims": 36,
+      "mean_mae": 0.00792014505714178,
+      "median_mae": 0.006576227955520153,
+      "mean_rmse": 0.009222129306064161,
+      "best_sim": "full_v2_110",
+      "worst_sim": "full_v2_013"
+    }
+  }
+}

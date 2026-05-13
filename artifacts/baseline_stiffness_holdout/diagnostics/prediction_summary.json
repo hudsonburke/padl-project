@@ -1,0 +1,23 @@
+{
+  "checkpoint": "artifacts/baseline_stiffness_holdout/best_model.pt",
+  "dataset": "data/processed/full_sweep_v2/resampled_dataset_stiffness_holdout.parquet",
+  "device": "cpu",
+  "splits": {
+    "val": {
+      "n_sims": 64,
+      "mean_mae": 0.06533041506190784,
+      "median_mae": 0.057757068425416946,
+      "mean_rmse": 0.07349237863649397,
+      "best_sim": "full_v2_167",
+      "worst_sim": "full_v2_141"
+    },
+    "test": {
+      "n_sims": 48,
+      "mean_mae": 0.16768539045006037,
+      "median_mae": 0.15931293368339539,
+      "mean_rmse": 0.18322525797118086,
+      "best_sim": "full_v2_227",
+      "worst_sim": "full_v2_206"
+    }
+  }
+}

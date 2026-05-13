@@ -1,0 +1,33 @@
+data:
+  dataset_path: data/processed/full_sweep_v2/resampled_dataset_stiffness_holdout.parquet
+  sim_id_col: sim_id
+  split_col: split
+  time_col: time
+  dynamic_features:
+  - strain
+  - strain_rate
+  - phase
+  static_features:
+  - tendon_l1
+  - visco_g1
+  - visco_t1
+  - ramp_time
+  target: force
+  batch_size: 16
+  num_workers: 0
+model:
+  model_name: baseline
+  output_mode: normalized
+  hidden_size: 64
+  context_size: 32
+  num_layers: 2
+  dropout: 0.1
+training:
+  seed: 42
+  device: auto
+  epochs: 200
+  learning_rate: 0.001
+  weight_decay: 1.0e-05
+  grad_clip: 1.0
+  early_stopping_patience: 25
+  out_dir: artifacts/baseline_stiffness_holdout

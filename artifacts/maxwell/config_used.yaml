@@ -1,0 +1,40 @@
+data:
+  dataset_path: data/processed/full_sweep_v2/resampled_dataset.parquet
+  sim_id_col: sim_id
+  split_col: split
+  time_col: time
+  dynamic_features:
+  - strain
+  - strain_rate
+  - phase
+  static_features:
+  - tendon_l1
+  - visco_g1
+  - visco_t1
+  - ramp_time
+  target: force
+  batch_size: 16
+  num_workers: 0
+model:
+  model_name: maxwell
+  output_mode: raw
+  context_size: 32
+  elastic_hidden_size: 64
+  viscous_hidden_size: 64
+  n_visco_modes: 4
+  step_size: 0.005
+  integrator: exact
+  tau_min: 0.001
+  tendon_scale_reference: 4.0
+  tendon_scale_base_init: 1.0
+  tendon_scale_exponent_init: 0.75
+  tendon_scale_exponent_min: 0.25
+training:
+  seed: 42
+  device: auto
+  epochs: 200
+  learning_rate: 0.001
+  weight_decay: 1.0e-05
+  grad_clip: 1.0
+  early_stopping_patience: 25
+  out_dir: artifacts/maxwell
