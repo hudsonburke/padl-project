@@ -109,6 +109,6 @@ uv run python scripts/plot_predictions.py --checkpoint artifacts/maxwell/best_mo
 
 - Normal report renders should use the committed `_freeze/` outputs and should not retrain.
 - Even if the document executes, existing experiment artifacts are reused by default.
-- Use `PADL_FORCE_RETRAIN=1 uv run quarto render report.qmd --execute --cache-refresh ...` when you explicitly want to rerun training/evaluation/diagnostics.
+- Use `PADL_FORCE_RETRAIN=1 uv run quarto render report.qmd --execute  ...` when you explicitly want to rerun training/evaluation/diagnostics.
 - `.venv/`, `.jupyter_cache/`, `.quarto/`, and other local/generated files are gitignored.
 - The final report compares the GRU baseline against the explicit Maxwell model.
