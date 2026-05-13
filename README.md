@@ -32,7 +32,7 @@ uv sync
 
 ## Rendering the report
 
-This repo uses Quarto project-level freeze (`freeze: true`).
+This repo uses Quarto project-level freeze (`freeze: auto`).
 The committed `_freeze/` directory allows a fresh clone to render the report without retraining the models.
 Normal renders should reuse the frozen execution outputs.
 
@@ -51,7 +51,7 @@ uv run quarto render --to html
 ## Forcing a full rerun
 
 The report contains hidden Python cells that can rerun the final training/evaluation/diagnostic pipelines.
-Because the project uses `freeze: true`, normal renders should reuse frozen results. In addition, the report now reuses existing model artifacts unless you explicitly request retraining.
+Because the project uses `freeze: auto`, normal renders should reuse frozen results. In addition, the report now reuses existing model artifacts unless you explicitly request retraining.
 To force a full recompute and refresh cached/frozen outputs, target `report.qmd` directly:
 
 ```bash

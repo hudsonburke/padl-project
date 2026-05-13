@@ -139,7 +139,7 @@ def plot_model_metric_comparison(baseline_interp, physics_interp, baseline_holdo
 
     x = np.arange(len(groups))
     width = 0.35
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.3))
+    fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.4))
 
     axes[0].bar(x - width / 2, baseline_mae, width, label='GRU baseline')
     axes[0].bar(x + width / 2, physics_mae, width, label='Explicit Maxwell model')
@@ -158,6 +158,7 @@ def plot_model_metric_comparison(baseline_interp, physics_interp, baseline_holdo
     axes[1].grid(True, axis='y', alpha=0.3)
 
     fig.tight_layout()
+    return fig
 
 
 def plot_diagnostic_pair(metric_rows, series_map, split, title_prefix, model_label):
@@ -198,10 +199,11 @@ def plot_diagnostic_pair(metric_rows, series_map, split, title_prefix, model_lab
     axes[0, 0].legend(loc='upper right')
     fig.suptitle(title_prefix)
     fig.tight_layout()
+    return fig
 
 
 def plot_case_comparison(sim_ids, baseline_series, physics_series, baseline_lookup, physics_lookup, title_prefix):
-    fig, axes = plt.subplots(2, len(sim_ids), figsize=(9.5, 5.8), sharex='col', height_ratios=[3, 1.4])
+    fig, axes = plt.subplots(2, len(sim_ids), figsize=(9.0, 4.6), sharex='col', height_ratios=[3, 1.4])
     if len(sim_ids) == 1:
         axes = np.array([[axes[0]], [axes[1]]])
 
@@ -243,6 +245,7 @@ def plot_case_comparison(sim_ids, baseline_series, physics_series, baseline_look
     axes[1, 0].legend(loc='upper right')
     fig.suptitle(title_prefix)
     fig.tight_layout()
+    return fig
 
 
 def plot_dataset_trajectories(dataset_path):
@@ -713,7 +716,7 @@ Both surrogate models are lightweight compared with the FEBio generator. The GRU
 ```{python}
 #| fig-cap: Comparison of the GRU baseline and the explicit-tendon-scaling Maxwell model across both evaluation protocols. The GRU is slightly better on interpolation validation, but the explicit Maxwell model dominates the stiffness-holdout benchmark.
 #| fig-align: center
-#| out-width: 94%
+#| out-width: 80%
 plot_model_metric_comparison(
     baseline_interp_metrics,
     physics_interp_metrics,
@@ -722,13 +725,9 @@ plot_model_metric_comparison(
 )
 ```
 
-### Interpolation split diagnostics
-
-On the interpolation split, the explicit Maxwell model still captures the full ramp-hold behavior well, so the stronger holdout performance is not a tradeoff against in-range accuracy. The model remains physically plausible on nearby parameter combinations, including near-zero force at the start of loading, while matching the baseline test error closely.
-
 ### Stiffness-holdout diagnostics
 
-The stiffness-holdout benchmark is the clearest discriminator between the two models. The GRU baseline develops a nonphysical force offset at `t = 0` and substantially underpredicts the force level on unseen `tendon_l1 = 6.0` trajectories. In contrast, the explicit Maxwell model preserves realistic relaxation during hold, maintains exact `F(0) = 0`, and substantially reduces the force-scale bias.
+On the interpolation split, the explicit Maxwell model still captures the ramp-hold behavior well, so the stronger holdout performance is not a tradeoff against in-range accuracy. The stiffness-holdout benchmark is the clearest discriminator between the two models: the GRU baseline develops a nonphysical force offset at `t = 0` and substantially underpredicts the force level on unseen `tendon_l1 = 6.0` trajectories, while the explicit Maxwell model preserves realistic relaxation during hold, maintains exact `F(0) = 0`, and substantially reduces the force-scale bias.
 
 ```{python}
 #| output: asis
@@ -777,7 +776,7 @@ The table above highlights the main physical improvement. On the holdout test se
 ```{python}
 #| fig-cap: Direct comparison on the best and worst stiffness-holdout test cases selected from the explicit Maxwell model. Relative to the GRU baseline, the explicit Maxwell model removes the nonphysical start-force offset, tracks the ramp scale more closely, and preserves the hold-phase relaxation curve.
 #| fig-align: center
-#| out-width: 96%
+#| out-width: 86%
 plot_case_comparison(
     comparison_sim_ids,
     baseline_holdout_series,

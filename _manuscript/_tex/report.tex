@@ -479,8 +479,8 @@ Model & Parameter count & CPU ms / batch & CPU ms / simulation \\
 \endhead
 \bottomrule\noalign{}
 \endlastfoot
-GRU baseline & 56,065 & 16.92 & 1.057 \\
-Explicit Maxwell model & 20,748 & 23.36 & 1.460 \\
+GRU baseline & 56,065 & 14.51 & 0.907 \\
+Explicit Maxwell model & 20,748 & 33.26 & 2.079 \\
 \end{longtable}
 }
 
@@ -492,25 +492,31 @@ and a few small MLP heads. The timing numbers above were measured on CPU
 in the report execution environment and are intended as relative
 complexity indicators rather than a hardware-optimized benchmark.
 
-\subsubsection{Interpolation split
-diagnostics}\label{interpolation-split-diagnostics}
+\begin{figure}[H]
 
-On the interpolation split, the explicit Maxwell model still captures
-the full ramp-hold behavior well, so the stronger holdout performance is
-not a tradeoff against in-range accuracy. The model remains physically
-plausible on nearby parameter combinations, including near-zero force at
-the start of loading, while matching the baseline test error closely.
+{\centering \pandocbounded{\includegraphics[keepaspectratio]{report_files/figure-pdf/cell-7-output-1.pdf}}
+
+}
+
+\caption{Comparison of the GRU baseline and the explicit-tendon-scaling
+Maxwell model across both evaluation protocols. The GRU is slightly
+better on interpolation validation, but the explicit Maxwell model
+dominates the stiffness-holdout benchmark.}
+
+\end{figure}%
 
 \subsubsection{Stiffness-holdout
 diagnostics}\label{stiffness-holdout-diagnostics}
 
-The stiffness-holdout benchmark is the clearest discriminator between
-the two models. The GRU baseline develops a nonphysical force offset at
-\texttt{t\ =\ 0} and substantially underpredicts the force level on
-unseen \texttt{tendon\_l1\ =\ 6.0} trajectories. In contrast, the
-explicit Maxwell model preserves realistic relaxation during hold,
-maintains exact \texttt{F(0)\ =\ 0}, and substantially reduces the
-force-scale bias.
+On the interpolation split, the explicit Maxwell model still captures
+the ramp-hold behavior well, so the stronger holdout performance is not
+a tradeoff against in-range accuracy. The stiffness-holdout benchmark is
+the clearest discriminator between the two models: the GRU baseline
+develops a nonphysical force offset at \texttt{t\ =\ 0} and
+substantially underpredicts the force level on unseen
+\texttt{tendon\_l1\ =\ 6.0} trajectories, while the explicit Maxwell
+model preserves realistic relaxation during hold, maintains exact
+\texttt{F(0)\ =\ 0}, and substantially reduces the force-scale bias.
 
 {\def\LTcaptype{none} % do not increment counter
 \begin{longtable}[]{@{}
@@ -551,6 +557,20 @@ test set, the GRU predicts a mean initial force of 0.3396, while the
 explicit Maxwell model predicts exactly 0.0. The explicit Maxwell model
 also matches the mean relaxation ratio much more closely (0.3443
 predicted vs.~0.3390 true) than the GRU (0.2989 predicted).
+
+\begin{figure}[H]
+
+{\centering \pandocbounded{\includegraphics[keepaspectratio]{report_files/figure-pdf/cell-9-output-1.pdf}}
+
+}
+
+\caption{Direct comparison on the best and worst stiffness-holdout test
+cases selected from the explicit Maxwell model. Relative to the GRU
+baseline, the explicit Maxwell model removes the nonphysical start-force
+offset, tracks the ramp scale more closely, and preserves the hold-phase
+relaxation curve.}
+
+\end{figure}%
 
 Even on the hardest holdout case (full\_v2\_206), the explicit Maxwell
 model lowers the error dramatically and maintains the correct
