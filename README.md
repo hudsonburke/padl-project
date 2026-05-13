@@ -55,13 +55,13 @@ Because the project uses `freeze: auto`, normal renders should reuse frozen resu
 To force a full recompute and refresh cached/frozen outputs, target `report.qmd` directly:
 
 ```bash
-PADL_FORCE_RETRAIN=1 uv run quarto render report.qmd --execute --cache-refresh --to pdf
+PADL_FORCE_RETRAIN=1 uv run quarto render report.qmd --execute --to pdf
 ```
 
 or
 
 ```bash
-PADL_FORCE_RETRAIN=1 uv run quarto render report.qmd --execute --cache-refresh --to html
+PADL_FORCE_RETRAIN=1 uv run quarto render report.qmd --execute --to html
 ```
 
 This will rerun the four final experiments:

@@ -10,7 +10,7 @@
   DIV=11,
   numbers=noendperiod]{scrartcl}
 \usepackage{xcolor}
-\usepackage[margin=0.75in]{geometry}
+\usepackage[margin=0.7in]{geometry}
 \usepackage{amsmath,amssymb}
 \setcounter{secnumdepth}{-\maxdimen} % remove section numbering
 \usepackage{iftex}
@@ -142,6 +142,22 @@
  
 
 
+\usepackage{titlesec}
+\usepackage{enumitem}
+\titlespacing*{\section}{0pt}{1.0ex plus 0.2ex minus .2ex}{0.6ex plus .1ex}
+\titlespacing*{\subsection}{0pt}{0.8ex plus 0.2ex minus .2ex}{0.5ex plus .1ex}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.5em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\normalfont\normalsize\bfseries\itshape}{\thesubsubsection}{0.5em}{}
+\titlespacing*{\subsubsection}{0pt}{0.7ex plus 0.2ex minus .2ex}{0.4ex plus .1ex}
+\setkomafont{title}{\normalfont\Large\bfseries}
+\setkomafont{author}{\normalfont\small}
+\setlist{itemsep=0pt, topsep=2pt, parsep=0pt}
+\setlength{\parskip}{2pt plus 1pt minus 1pt}
+\setlength{\abovecaptionskip}{2pt}
+\setlength{\belowcaptionskip}{2pt}
+\setlength{\textfloatsep}{6pt plus 2pt minus 2pt}
+\setlength{\intextsep}{6pt plus 2pt minus 2pt}
 \KOMAoption{captions}{tableheading}
 \makeatletter
 \@ifpackageloaded{caption}{}{\usepackage{caption}}
@@ -479,8 +495,8 @@ Model & Parameter count & CPU ms / batch & CPU ms / simulation \\
 \endhead
 \bottomrule\noalign{}
 \endlastfoot
-GRU baseline & 56,065 & 14.51 & 0.907 \\
-Explicit Maxwell model & 20,748 & 33.26 & 2.079 \\
+GRU baseline & 56,065 & 16.40 & 1.025 \\
+Explicit Maxwell model & 20,748 & 24.40 & 1.525 \\
 \end{longtable}
 }
 
