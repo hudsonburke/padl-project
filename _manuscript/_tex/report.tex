@@ -1,0 +1,636 @@
+% Options for packages loaded elsewhere
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\PassOptionsToPackage{dvipsnames,svgnames,x11names}{xcolor}
+%
+\documentclass[
+  10pt,
+  letterpaper,
+  DIV=11,
+  numbers=noendperiod]{scrartcl}
+\usepackage{xcolor}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+% Make \paragraph and \subparagraph free-standing
+\makeatletter
+\ifx\paragraph\undefined\else
+  \let\oldparagraph\paragraph
+  \renewcommand{\paragraph}{
+    \@ifstar
+      \xxxParagraphStar
+      \xxxParagraphNoStar
+  }
+  \newcommand{\xxxParagraphStar}[1]{\oldparagraph*{#1}\mbox{}}
+  \newcommand{\xxxParagraphNoStar}[1]{\oldparagraph{#1}\mbox{}}
+\fi
+\ifx\subparagraph\undefined\else
+  \let\oldsubparagraph\subparagraph
+  \renewcommand{\subparagraph}{
+    \@ifstar
+      \xxxSubParagraphStar
+      \xxxSubParagraphNoStar
+  }
+  \newcommand{\xxxSubParagraphStar}[1]{\oldsubparagraph*{#1}\mbox{}}
+  \newcommand{\xxxSubParagraphNoStar}[1]{\oldsubparagraph{#1}\mbox{}}
+\fi
+\makeatother
+
+
+\usepackage{longtable,booktabs,array}
+\newcounter{none} % for unnumbered tables
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+\usepackage{graphicx}
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+% Set default figure placement to htbp
+\def\fps@figure{htbp}
+\makeatother
+
+
+% definitions for citeproc citations
+\NewDocumentCommand\citeproctext{}{}
+\NewDocumentCommand\citeproc{mm}{%
+  \begingroup\def\citeproctext{#2}\cite{#1}\endgroup}
+\makeatletter
+ % allow citations to break across lines
+ \let\@cite@ofmt\@firstofone
+ % avoid brackets around text for \cite:
+ \def\@biblabel#1{}
+ \def\@cite#1#2{{#1\if@tempswa , #2\fi}}
+\makeatother
+\newlength{\cslhangindent}
+\setlength{\cslhangindent}{1.5em}
+\newlength{\csllabelwidth}
+\setlength{\csllabelwidth}{3em}
+\newenvironment{CSLReferences}[2] % #1 hanging-indent, #2 entry-spacing
+ {\begin{list}{}{%
+  \setlength{\itemindent}{0pt}
+  \setlength{\leftmargin}{0pt}
+  \setlength{\parsep}{0pt}
+  % turn on hanging indent if param 1 is 1
+  \ifodd #1
+   \setlength{\leftmargin}{\cslhangindent}
+   \setlength{\itemindent}{-1\cslhangindent}
+  \fi
+  % set entry spacing
+  \setlength{\itemsep}{#2\baselineskip}}}
+ {\end{list}}
+\usepackage{calc}
+\newcommand{\CSLBlock}[1]{\hfill\break\parbox[t]{\linewidth}{\strut\ignorespaces#1\strut}}
+\newcommand{\CSLLeftMargin}[1]{\parbox[t]{\csllabelwidth}{\strut#1\strut}}
+\newcommand{\CSLRightInline}[1]{\parbox[t]{\linewidth - \csllabelwidth}{\strut#1\strut}}
+\newcommand{\CSLIndent}[1]{\hspace{\cslhangindent}#1}
+
+
+
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+
+
+ 
+
+
+\KOMAoption{captions}{tableheading}
+\makeatletter
+\@ifpackageloaded{caption}{}{\usepackage{caption}}
+\AtBeginDocument{%
+\ifdefined\contentsname
+  \renewcommand*\contentsname{Table of contents}
+\else
+  \newcommand\contentsname{Table of contents}
+\fi
+\ifdefined\listfigurename
+  \renewcommand*\listfigurename{List of Figures}
+\else
+  \newcommand\listfigurename{List of Figures}
+\fi
+\ifdefined\listtablename
+  \renewcommand*\listtablename{List of Tables}
+\else
+  \newcommand\listtablename{List of Tables}
+\fi
+\ifdefined\figurename
+  \renewcommand*\figurename{Figure}
+\else
+  \newcommand\figurename{Figure}
+\fi
+\ifdefined\tablename
+  \renewcommand*\tablename{Table}
+\else
+  \newcommand\tablename{Table}
+\fi
+}
+\@ifpackageloaded{float}{}{\usepackage{float}}
+\floatstyle{ruled}
+\@ifundefined{c@chapter}{\newfloat{codelisting}{h}{lop}}{\newfloat{codelisting}{h}{lop}[chapter]}
+\floatname{codelisting}{Listing}
+\newcommand*\listoflistings{\listof{codelisting}{List of Listings}}
+\makeatother
+\makeatletter
+\makeatother
+\makeatletter
+\@ifpackageloaded{caption}{}{\usepackage{caption}}
+\@ifpackageloaded{subcaption}{}{\usepackage{subcaption}}
+\makeatother
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={A physics-aware recurrent surrogate for nonlinear viscoelastic tendon force prediction},
+  pdfauthor={Hudson Burke},
+  colorlinks=true,
+  linkcolor={blue},
+  filecolor={Maroon},
+  citecolor={Blue},
+  urlcolor={Blue},
+  pdfcreator={LaTeX via pandoc}}
+
+
+\title{A physics-aware recurrent surrogate for nonlinear viscoelastic
+tendon force prediction}
+\author{Hudson Burke}
+\date{}
+\begin{document}
+\maketitle
+
+
+\subsection{Problem Definition}\label{problem-definition}
+
+This project studies force prediction for a tendon-like strip undergoing
+ramp-hold uniaxial extension. The underlying FEBio model uses a tendon
+elastic response wrapped by an uncoupled viscoelastic material, so the
+effective constitutive behavior is nonlinear and time dependent (FEBio
+2025). Rather than predicting full finite-element fields, the surrogate
+targets the global reaction force history \(F(t)\), which is the
+quantity needed for reduced musculoskeletal simulation.
+
+Following the FEBio Theory Manual (FEBio 2025), the generator is
+motivated by transient solid mechanics with additive elastic and viscous
+stress contributions,
+
+\[
+\rho \ddot{\mathbf{u}} = \nabla \cdot \boldsymbol{\sigma} + \rho \mathbf{b},
+\qquad
+\boldsymbol{\sigma} = \boldsymbol{\sigma}_e + \boldsymbol{\sigma}_v,
+\]
+
+but the learned surrogate ultimately approximates only the reduced
+global force response rather than the full displacement or stress field.
+
+The final data-generation setup was a fixed-geometry tensile test:
+
+\begin{itemize}
+\tightlist
+\item
+  rectangular strip: 10 mm × 2 mm × 1 mm,
+\item
+  loading axis: x,
+\item
+  target displacement: 0.5 mm,
+\item
+  target strain: 0.05,
+\item
+  total time: 1.0 s,
+\item
+  fixed output grid: 201 time points.
+\end{itemize}
+
+\subsection{Data}\label{data}
+
+Synthetic trajectories were generated in FEBio (FEBio 2025) by varying
+the four parameters most closely tied to the proposal goals:
+
+\begin{itemize}
+\tightlist
+\item
+  fiber stiffness: \texttt{tendon\_l1\ ∈\ \{3.0,\ 4.0,\ 5.0,\ 6.0\}}
+\item
+  viscoelastic amplitude:
+  \texttt{visco\_g1\ ∈\ \{0.30,\ 0.45,\ 0.60,\ 0.75\}}
+\item
+  relaxation time: \texttt{visco\_t1\ ∈\ \{0.10,\ 0.20,\ 0.30,\ 0.40\}}
+\item
+  loading rate: \texttt{ramp\_time\ ∈\ \{0.10,\ 0.20,\ 0.30,\ 0.40\}}
+\end{itemize}
+
+A 4 × 4 × 4 × 4 design produced 256 planned simulations. Of these, 240
+validated successfully after processing and QC. The 16 failures were
+localized to the numerically difficult corner with highest stiffness and
+fastest loading (\texttt{tendon\_l1\ =\ 6.0},
+\texttt{ramp\_time\ =\ 0.1}). All validated runs were resampled onto the
+same 201-point time grid to produce a model-ready dataset.
+
+\begin{figure}[H]
+
+{\centering \pandocbounded{\includegraphics[keepaspectratio]{report_files/figure-pdf/cell-3-output-1.pdf}}
+
+}
+
+\caption{Validated force-time trajectories grouped by stiffness level.
+The systematic increase in peak and hold force with increasing
+tendon\_l1 makes the stiffness-holdout split a meaningful extrapolation
+test.}
+
+\end{figure}%
+
+\subsection{Method}\label{method}
+
+The learning problem is a sequence-to-sequence surrogate rather than a
+full field predictor. Each trajectory is represented by:
+
+\begin{itemize}
+\tightlist
+\item
+  dynamic inputs: \texttt{strain}, \texttt{strain\_rate}, \texttt{phase}
+\item
+  static inputs: \texttt{tendon\_l1}, \texttt{visco\_g1},
+  \texttt{visco\_t1}, \texttt{ramp\_time}
+\item
+  target output: \texttt{force}
+\end{itemize}
+
+Two recurrent surrogate models were evaluated.
+
+\subsubsection{GRU baseline}\label{gru-baseline}
+
+The baseline uses a gated recurrent unit (GRU) sequence model (Cho et
+al. 2014) with:
+
+\begin{itemize}
+\tightlist
+\item
+  an MLP encoder for the static parameters,
+\item
+  a GRU sequence model for the dynamic trajectory,
+\item
+  a readout MLP that maps recurrent hidden states to force.
+\end{itemize}
+
+This model is flexible and accurate, but it does not explicitly enforce
+constitutive structure beyond recurrence.
+
+\subsubsection{Physics-aware coupled Maxwell model with explicit tendon
+scaling}\label{physics-aware-coupled-maxwell-model-with-explicit-tendon-scaling}
+
+The final physics-aware model is not a literal PARCv2 implementation.
+Instead, it is a PARC-inspired constitutive recurrent surrogate that
+borrows the idea of structured state evolution from PARCv2 (Nguyen et
+al. 2024) while using the classical generalized Maxwell picture as its
+viscoelastic inductive bias (Christensen 1982). In a generalized Maxwell
+model, an equilibrium branch carries the long-time elastic response,
+while several parallel Maxwell branches contribute transient overstress
+terms that decay with their own characteristic relaxation times during a
+strain hold (Christensen 1982). The model therefore structures the
+dynamics as a generalized Maxwell-style tendon surrogate:
+
+\begin{itemize}
+\item
+  a learned elastic force scale driven by strain history,
+\item
+  transient Maxwell overstress branches that build during the ramp and
+  decay during hold,
+\item
+  exact enforcement of \(F(0) = 0\),
+\item
+  an explicit monotone tendon stiffness scaling law applied using the
+  raw stiffness parameter,
+
+  \[
+  s(\mathrm{tendon\_l1}) = s_0 \left(\frac{\mathrm{tendon\_l1}}{l_{\mathrm{ref}}}\right)^{\alpha},
+  \qquad s_0 > 0, \; \alpha > 0.
+  \]
+\end{itemize}
+
+This explicit scaling was introduced after simpler learned calibrators
+still underpredicted the force level on unseen stiffness values. It
+gives the model a direct, physically meaningful mechanism for increasing
+force with tendon stiffness. In reduced constitutive form, the final
+surrogate assumes
+
+\[
+F(t) = s(\mathrm{tendon\_l1})\left[g_{\mathrm{eq}} F_{\mathrm{full}}\!\left(\varepsilon(t); \theta_e\right) + \sum_i q_i(t)\right],
+\]
+
+\[
+\frac{dq_i}{dt} = g_i d(t) - \frac{q_i}{\tau_i},
+\qquad
+ d(t) = \max\!\left(\frac{dF_{\mathrm{full}}}{dt}, 0\right),
+\]
+
+where \(F_{\mathrm{full}}\) is the learned elastic force scale, \(q_i\)
+are transient Maxwell overstress states, and \(\tau_i\) are learned
+relaxation times. In other words, the model approximates tendon force as
+an equilibrium elastic contribution plus a sum of decaying
+nonequilibrium branches, which is the qualitative behavior expected from
+a generalized Maxwell material (Christensen 1982). This structure makes
+stress relaxation during a strain hold explicit rather than leaving it
+entirely to a generic recurrent hidden state.
+
+\begin{figure}[H]
+
+{\centering \pandocbounded{\includegraphics[keepaspectratio]{report_files/figure-pdf/cell-4-output-1.pdf}}
+
+}
+
+\caption{Architecture of the final physics-aware model. Small neural
+subnetworks encode static parameter groups and estimate elastic/viscous
+quantities, while explicit Maxwell branch states carry the viscoelastic
+memory over time.}
+
+\end{figure}%
+
+Both models were trained with mean-squared error loss. Two evaluation
+protocols were used:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{Interpolation split}: mixed train/val/test assignment across
+  the parameter grid (168 / 36 / 36 simulations).
+\item
+  \textbf{Stiffness holdout split}: whole stiffness levels held out,
+
+  \begin{itemize}
+  \tightlist
+  \item
+    train: \texttt{tendon\_l1\ ∈\ \{3.0,\ 4.0\}}
+  \item
+    val: \texttt{tendon\_l1\ =\ 5.0}
+  \item
+    test: \texttt{tendon\_l1\ =\ 6.0}
+  \end{itemize}
+\end{enumerate}
+
+The second split is intentionally harder and probes extrapolation to
+unseen stiffness levels.
+
+\subsection{Results}\label{results}
+
+\subsubsection{Quantitative summary}\label{quantitative-summary}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1429}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1429}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1429}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1429}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1429}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1429}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 12\tabcolsep) * \real{0.1429}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Model
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Evaluation setting
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Train MAE
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Val MAE
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Test MAE
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Val MSE
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Test MSE
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+GRU baseline & Interpolation split & 0.00710 & 0.00644 & 0.00818 &
+6.85e-05 & 1.06e-04 \\
+Explicit Maxwell model & Interpolation split & 0.00861 & 0.00834 &
+0.00831 & 1.15e-04 & 1.10e-04 \\
+GRU baseline & Stiffness holdout & 0.01643 & 0.06507 & 0.16790 &
+6.33e-03 & 4.10e-02 \\
+Explicit Maxwell model & Stiffness holdout & 0.01018 & 0.02466 & 0.04947
+& 9.64e-04 & 3.21e-03 \\
+\end{longtable}
+}
+
+The GRU baseline remains an excellent interpolation model, but the new
+explicit-tendon-scaling Maxwell surrogate is now nearly tied with it on
+the interpolation test set (0.00831 vs.~0.00818 test MAE). The much more
+important result is on the stiffness-holdout benchmark: the explicit
+Maxwell model reduces holdout MAE from 0.0651 to 0.0247 on validation
+and from 0.1679 to 0.0495 on test. This is about a 71\% reduction in
+test MAE while simultaneously improving physical plausibility.
+
+\subsubsection{Computational cost}\label{computational-cost}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}llll@{}}
+\toprule\noalign{}
+Model & Parameter count & CPU ms / batch & CPU ms / simulation \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+GRU baseline & 56,065 & 16.92 & 1.057 \\
+Explicit Maxwell model & 20,748 & 23.36 & 1.460 \\
+\end{longtable}
+}
+
+Both surrogate models are lightweight compared with the FEBio generator.
+The GRU baseline has more trainable parameters because it carries a
+2-layer recurrent hidden state, while the explicit Maxwell model
+replaces that generic recurrence with four explicit viscoelastic modes
+and a few small MLP heads. The timing numbers above were measured on CPU
+in the report execution environment and are intended as relative
+complexity indicators rather than a hardware-optimized benchmark.
+
+\subsubsection{Interpolation split
+diagnostics}\label{interpolation-split-diagnostics}
+
+On the interpolation split, the explicit Maxwell model still captures
+the full ramp-hold behavior well, so the stronger holdout performance is
+not a tradeoff against in-range accuracy. The model remains physically
+plausible on nearby parameter combinations, including near-zero force at
+the start of loading, while matching the baseline test error closely.
+
+\subsubsection{Stiffness-holdout
+diagnostics}\label{stiffness-holdout-diagnostics}
+
+The stiffness-holdout benchmark is the clearest discriminator between
+the two models. The GRU baseline develops a nonphysical force offset at
+\texttt{t\ =\ 0} and substantially underpredicts the force level on
+unseen \texttt{tendon\_l1\ =\ 6.0} trajectories. In contrast, the
+explicit Maxwell model preserves realistic relaxation during hold,
+maintains exact \texttt{F(0)\ =\ 0}, and substantially reduces the
+force-scale bias.
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Model
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Split
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Mean predicted F(0)
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Mean predicted relaxation
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Mean true relaxation
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Mean abs. relaxation error
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+GRU baseline & Validation & 0.2216 & 0.3173 & 0.3649 & 0.0580 \\
+Explicit Maxwell model & Validation & 0.0000 & 0.3657 & 0.3649 &
+0.0104 \\
+GRU baseline & Test & 0.3396 & 0.2989 & 0.3390 & 0.0624 \\
+Explicit Maxwell model & Test & 0.0000 & 0.3443 & 0.3390 & 0.0109 \\
+\end{longtable}
+}
+
+The table above highlights the main physical improvement. On the holdout
+test set, the GRU predicts a mean initial force of 0.3396, while the
+explicit Maxwell model predicts exactly 0.0. The explicit Maxwell model
+also matches the mean relaxation ratio much more closely (0.3443
+predicted vs.~0.3390 true) than the GRU (0.2989 predicted).
+
+Even on the hardest holdout case (full\_v2\_206), the explicit Maxwell
+model lowers the error dramatically and maintains the correct
+qualitative shape. The remaining discrepancy is mostly a modest residual
+underprediction of the force level, not a breakdown of the constitutive
+behavior itself.
+
+\subsection{Conclusion}\label{conclusion}
+
+The FEBio pipeline successfully produced a high-quality dataset of
+validated tendon force trajectories, and the modeling study now gives a
+clear comparison between a strong generic recurrent baseline and a more
+physically structured constitutive surrogate.
+
+The main findings are:
+
+\begin{itemize}
+\tightlist
+\item
+  The GRU baseline is an excellent interpolation model on this smooth,
+  fixed-protocol sequence dataset.
+\item
+  A generalized Maxwell-style recurrent model with explicit tendon
+  stiffness scaling can nearly match the GRU on interpolation.
+\item
+  On the harder stiffness-holdout benchmark, the explicit Maxwell model
+  is substantially better than the GRU baseline.
+\item
+  The explicit Maxwell model enforces \texttt{F(0)\ =\ 0} exactly and
+  reproduces hold-phase relaxation much more faithfully under
+  extrapolation.
+\item
+  The remaining holdout error is mainly a reduced force-level bias, not
+  a failure to capture the viscoelastic relaxation mechanism.
+\end{itemize}
+
+Overall, the final project supports the central hypothesis that adding
+constitutive structure and physically meaningful parameter scaling can
+materially improve out-of-distribution generalization, even when a less
+structured recurrent model is already strong on interpolation.
+
+Future work should focus on three directions. First, the present
+explicit-Maxwell surrogate could be extended toward a more faithful
+differentiator--integrator PARCv2-style training procedure, separating
+learned rate-law estimation from correction/integration. Second, the
+data space could be broadened by adding more stiffness levels,
+additional loading protocols, and possibly simple geometric variations
+to probe generalization beyond the current ramp-hold strip test. Third,
+a more explicit timing comparison against FEBio would strengthen the
+case for surrogate deployment in larger multiscale or musculoskeletal
+simulations.
+
+\subsection*{References}\label{references}
+\addcontentsline{toc}{subsection}{References}
+
+\protect\phantomsection\label{refs}
+\begin{CSLReferences}{1}{1}
+\bibitem[\citeproctext]{ref-cho2014gru}
+Cho, Kyunghyun, Bart van Merrienboer, Caglar Gulcehre, et al. 2014.
+{``Learning Phrase Representations Using {RNN} Encoder-Decoder for
+Statistical Machine Translation.''} \emph{arXiv Preprint
+arXiv:1406.1078}. \url{https://arxiv.org/abs/1406.1078}.
+
+\bibitem[\citeproctext]{ref-christensen1982viscoelasticity}
+Christensen, Richard M. 1982. \emph{Theory of Viscoelasticity: An
+Introduction}. 2nd ed. Academic Press.
+
+\bibitem[\citeproctext]{ref-febioTheory411}
+FEBio. 2025. {``{FEBio Theory Manual}.''}
+\url{https://help.febio.org/docs/FEBioTheory-4-11/TM411.html}.
+
+\bibitem[\citeproctext]{ref-nguyen2024parcv2}
+Nguyen, Phong C. H., Xinlun Cheng, Shahab Azarfar, et al. 2024.
+{``{PARCv2}: Physics-Aware Recurrent Convolutional Neural Networks for
+Spatiotemporal Dynamics Modeling.''} \emph{arXiv Preprint
+arXiv:2402.12503}. \url{https://arxiv.org/abs/2402.12503}.
+
+\end{CSLReferences}
+
+
+
+
+\end{document}

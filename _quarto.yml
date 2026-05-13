@@ -9,6 +9,7 @@ format:
     code-fold: true
   docx: default
   pdf:
+    notebook-links: false
     fontsize: 10pt
     geometry:
       - margin=0.75in

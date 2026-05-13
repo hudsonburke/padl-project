@@ -330,21 +330,33 @@ def benchmark_model(checkpoint_path, config_path, split='test', batch_size=16, n
 
 
 def plot_final_model_architecture():
-    fig, axes = plt.subplots(1, 2, figsize=(11.6, 5.2), gridspec_kw={'width_ratios': [1.08, 1.0]})
-    ax1, ax2 = axes
+    fig, ax = plt.subplots(figsize=(12.2, 5.6))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis('off')
 
-    for ax in axes:
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        ax.axis('off')
-
-    def box(ax, x, y, w, h, text, fc='#f5f7fb', ec='#2f4b7c', fontsize=10, weight='normal'):
+    def panel(x, y, w, h, title, fc='#f8fafc', ec='#cbd5e1'):
         patch = FancyBboxPatch(
             (x, y), w, h,
-            boxstyle='round,pad=0.015,rounding_size=0.02',
-            linewidth=1.5,
+            boxstyle='round,pad=0.012,rounding_size=0.02',
+            linewidth=1.1,
             edgecolor=ec,
             facecolor=fc,
+            linestyle='-',
+            zorder=0,
+        )
+        ax.add_patch(patch)
+        ax.text(x + 0.015, y + h - 0.03, title, ha='left', va='top', fontsize=10, weight='bold', color='#334155')
+        return (x, y, w, h)
+
+    def box(x, y, w, h, text, fc='#f5f7fb', ec='#2f4b7c', fontsize=9, weight='normal'):
+        patch = FancyBboxPatch(
+            (x, y), w, h,
+            boxstyle='round,pad=0.012,rounding_size=0.02',
+            linewidth=1.8,
+            edgecolor=ec,
+            facecolor=fc,
+            zorder=2,
         )
         ax.add_patch(patch)
         ax.text(
@@ -356,6 +368,7 @@ def plot_final_model_architecture():
             fontsize=fontsize,
             weight=weight,
             wrap=True,
+            zorder=3,
         )
         return (x, y, w, h)
 
@@ -371,7 +384,7 @@ def plot_final_model_architecture():
             return (x + frac * w, y)
         raise ValueError(f'Unknown side: {side}')
 
-    def arrow(ax, a, b, start='right', end='left', start_frac=0.5, end_frac=0.5, rad=0.0):
+    def arrow(a, b, start='right', end='left', start_frac=0.5, end_frac=0.5, rad=0.0, lw=1.5):
         p1 = anchor(a, start, start_frac)
         p2 = anchor(b, end, end_frac)
         arr = FancyArrowPatch(
@@ -379,75 +392,71 @@ def plot_final_model_architecture():
             p2,
             arrowstyle='->',
             mutation_scale=12,
-            linewidth=1.4,
-            color='#333333',
+            linewidth=lw,
+            color='#334155',
             connectionstyle=f'arc3,rad={rad}',
+            zorder=1,
         )
         ax.add_patch(arr)
 
     fig.suptitle(
         'Final physics-aware model: coupled Maxwell surrogate with explicit tendon scaling',
-        fontsize=9,
+        fontsize=12,
         weight='bold',
         y=0.98,
     )
     fig.text(
         0.5,
-        0.93,
-        'Stage 1 encodes strain history and separates static parameters; Stage 2 assembles the equilibrium and Maxwell contributions.',
+        0.935,
+        'Neural encoders map loading and material inputs to elastic, viscous, and scaling branches; explicit Maxwell memory carries the time dependence.',
         ha='center',
         va='top',
         fontsize=10,
     )
 
-    ax1.text(0.02, 0.90, 'Stage 1: input grouping and encoding', fontsize=11, weight='bold')
-    dyn = box(ax1, 0.03, 0.63, 0.28, 0.16, 'Dynamic raw inputs\nstrain, strain_rate, phase', fc='#e8f1fb', weight='bold')
-    static = box(ax1, 0.03, 0.34, 0.28, 0.18, 'Static inputs\ntendon_l1, visco_g1,\nvisco_t1, ramp_time', fc='#e8f1fb', weight='bold')
-    tendon_raw = box(ax1, 0.03, 0.10, 0.28, 0.12, 'Raw tendon_l1', fc='#fff2cc', weight='bold')
+    panel(0.03, 0.12, 0.18, 0.74, 'Inputs', fc='#f8fbff')
+    panel(0.26, 0.12, 0.21, 0.74, 'Encoders', fc='#fbf8ff')
+    panel(0.52, 0.12, 0.25, 0.74, 'Constitutive heads', fc='#f8fcf7')
+    panel(0.81, 0.12, 0.16, 0.74, 'Output / state', fc='#fffaf5')
 
-    split = box(ax1, 0.42, 0.34, 0.28, 0.18, 'Split static inputs into\nelastic / viscous /\nprotocol groups', fc='#f4ecff', weight='bold')
-    elastic_enc = box(ax1, 0.79, 0.63, 0.18, 0.13, 'Elastic\nencoder', fc='#f4ecff')
-    viscous_enc = box(ax1, 0.79, 0.44, 0.18, 0.13, 'Viscous\nencoder', fc='#f4ecff')
-    protocol_enc = box(ax1, 0.79, 0.25, 0.18, 0.13, 'Protocol\nencoder', fc='#f4ecff')
+    dyn = box(0.055, 0.64, 0.13, 0.12, 'Dynamic input\nstrain, strain_rate, phase', fc='#e8f1fb', fontsize=8.6, weight='bold')
+    static = box(0.055, 0.40, 0.13, 0.16, 'Static input\ntendon_l1, visco_g1,\nvisco_t1, ramp_time', fc='#e8f1fb', fontsize=8.4, weight='bold')
+    raw_l1 = box(0.055, 0.18, 0.13, 0.10, 'Raw tendon_l1', fc='#fff2cc', fontsize=8.5, weight='bold')
 
-    arrow(ax1, static, split)
-    arrow(ax1, split, elastic_enc, end_frac=0.50)
-    arrow(ax1, split, viscous_enc, end_frac=0.50)
-    arrow(ax1, split, protocol_enc, end_frac=0.50)
-    ax1.annotate('', xy=anchor(elastic_enc, 'left', 0.50), xytext=anchor(dyn, 'right', 0.50), arrowprops=dict(arrowstyle='->', lw=1.4, color='#333333'))
-    ax1.text(0.53, 0.72, 'raw strain sequence', ha='center', va='bottom', fontsize=9)
-    ax1.annotate('', xy=(0.78, 0.16), xytext=anchor(tendon_raw, 'right', 0.50), arrowprops=dict(arrowstyle='->', lw=1.4, color='#333333'))
-    ax1.text(0.56, 0.16, 'raw stiffness kept for explicit scaling', ha='center', va='bottom', fontsize=9)
+    elastic_enc = box(0.30, 0.64, 0.13, 0.12, 'Elastic\nencoder', fc='#f4ecff', fontsize=8.8)
+    viscous_enc = box(0.30, 0.44, 0.13, 0.12, 'Viscous\nencoder', fc='#f4ecff', fontsize=8.8)
+    protocol_enc = box(0.30, 0.24, 0.13, 0.12, 'Protocol\nencoder', fc='#f4ecff', fontsize=8.8)
 
-    ax2.text(0.02, 0.90, 'Stage 2: constitutive assembly and time update', fontsize=11, weight='bold')
-    elastic_head = box(ax2, 0.03, 0.61, 0.40, 0.16, 'Elastic force head\nF_full(t) = ε ×\nsoftplus(MLP)', fc='#d9ead3', fontsize=8.2, weight='bold')
-    maxwell_params = box(ax2, 0.03, 0.40, 0.40, 0.16, 'Partition + τ heads\n[g_eq, g_i], τ_i', fc='#d9ead3', fontsize=8.2, weight='bold')
-    scale_law = box(ax2, 0.03, 0.16, 0.40, 0.16, 'Explicit tendon scaling\ns(l1) = s0 ×\n(l1 / l_ref)^α', fc='#fff2cc', fontsize=8.2, weight='bold')
-    update = box(ax2, 0.54, 0.16, 0.40, 0.16, 'Exact Maxwell update\nq_i ← branch memory', fc='#fce5cd', fontsize=8.2, weight='bold')
-    output = box(ax2, 0.54, 0.61, 0.40, 0.16, 'Final force\nF = s × [g_eq F_full\n+ Σ q_i]', fc='#cfe2f3', fontsize=8.2, weight='bold')
+    elastic_head = box(0.55, 0.66, 0.18, 0.10, 'Elastic head\nF_full = ε × softplus(MLP)', fc='#d9ead3', fontsize=8.3, weight='bold')
+    partition_head = box(0.55, 0.51, 0.18, 0.10, 'Partition head\n[g_eq, g_i]', fc='#d9ead3', fontsize=8.5, weight='bold')
+    tau_head = box(0.55, 0.36, 0.18, 0.10, 'Relaxation head\nτ_i', fc='#d9ead3', fontsize=8.5, weight='bold')
+    scale_head = box(0.55, 0.18, 0.18, 0.10, 'Scaling law\ns(l1) = s0 × (l1 / l_ref)^α', fc='#fff2cc', fontsize=8.2, weight='bold')
 
-    arrow(ax2, elastic_head, output)
-    arrow(ax2, maxwell_params, update)
-    arrow(ax2, elastic_head, update, start='bottom', end='top', start_frac=0.70, end_frac=0.28)
-    arrow(ax2, scale_law, output, start='top', end='bottom', start_frac=0.50, end_frac=0.48)
-    arrow(ax2, update, output, start='top', end='bottom', start_frac=0.50, end_frac=0.78)
+    maxwell_state = box(0.83, 0.38, 0.12, 0.16, 'Maxwell state\nq_i\n(branch memory)', fc='#fce5cd', fontsize=8.4, weight='bold')
+    output = box(0.83, 0.66, 0.12, 0.10, 'Force output\nF = s [g_eq F_full + Σ q_i]', fc='#cfe2f3', fontsize=8.1, weight='bold')
 
-    ax2.text(0.48, 0.81, 'equilibrium term', fontsize=8.5, ha='center')
-    ax2.text(0.48, 0.35, 'branch weights + time constants', fontsize=8.5, ha='center')
-    ax2.text(0.74, 0.52, 'Maxwell overstress states', fontsize=8.5, ha='center')
-    ax2.text(0.48, 0.12, 'monotone stiffness scaling', fontsize=8.5, ha='center')
+    arrow(dyn, elastic_enc)
+    arrow(static, elastic_enc, start_frac=0.85, end_frac=0.30, rad=0.05)
+    arrow(static, viscous_enc, start_frac=0.50, end_frac=0.50)
+    arrow(static, protocol_enc, start_frac=0.15, end_frac=0.70, rad=-0.05)
+    arrow(raw_l1, scale_head)
 
-    ax2.text(
-        0.50,
-        0.05,
-        'Elastic branch gives the long-time force; Maxwell branches store transient overstress that builds during the ramp and decays during hold.',
-        ha='center',
-        va='bottom',
-        fontsize=9,
-        wrap=True,
-    )
+    arrow(elastic_enc, elastic_head)
+    arrow(viscous_enc, partition_head)
+    arrow(viscous_enc, tau_head, rad=-0.05)
+    arrow(protocol_enc, elastic_head, rad=-0.10)
+    arrow(protocol_enc, partition_head, rad=-0.05)
 
-    fig.tight_layout(rect=(0, 0, 1, 0.9), w_pad=1.5)
+    arrow(elastic_head, output)
+    arrow(partition_head, maxwell_state)
+    arrow(tau_head, maxwell_state)
+    arrow(elastic_head, maxwell_state, start='bottom', end='top', start_frac=0.85, end_frac=0.20, rad=-0.05)
+    arrow(scale_head, output, start='top', end='bottom', start_frac=0.85, end_frac=0.25, rad=-0.15)
+    arrow(maxwell_state, output, start='top', end='bottom', start_frac=0.55, end_frac=0.80)
+
+    ax.text(0.89, 0.34, 'recurrent memory update', fontsize=8.2, ha='center', color='#475569')
+
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
     return fig
 
 
